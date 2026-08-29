@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from app.api import health, resume
+from app.api import health, resume, interview
 
 app = FastAPI(
     title="InterFit AI",
@@ -12,4 +12,5 @@ app = FastAPI(
 )
 
 app.include_router(health.router, prefix="/health", tags=["Health"])
-app.include_router(resume.router, prefix="/resumes", tags=["Resume"])
+app.include_router(resume.router, prefix="/api/resumes", tags=["Resume"])
+app.include_router(interview.router, prefix="/api/interviews", tags=["Interview"])
