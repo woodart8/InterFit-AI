@@ -7,7 +7,6 @@ from app.schemas.interview import (
     InterviewStartResponse,
     InterviewQuestion,
     InterviewAnswerRequest,
-    InterviewAnswerResponse,
 )
 
 from app.repositories.resume_repository import find_resume
@@ -19,7 +18,10 @@ from app.repositories.interview_repository import (
     save_question,
 )
 
-from app.services.question_service import generate_next_question
+from app.services.question_service import (
+    generate_follow_up_question as generate_follow_up_question_ai,
+    generate_new_question as generate_new_question_ai,
+)
 
 
 def start_interview(
@@ -60,9 +62,8 @@ def start_interview(
 def submit_answer(
     interview_id: str,
     request: InterviewAnswerRequest,
-) -> InterviewAnswerResponse:
+):
 
-    # 1. 면접 조회
     interview = find_interview(interview_id)
 
     if not interview:
@@ -71,7 +72,6 @@ def submit_answer(
             detail="면접을 찾을 수 없습니다.",
         )
 
-    # 2. 현재 질문 찾기
     current_question = next(
         (
             question
@@ -87,7 +87,6 @@ def submit_answer(
             detail="질문을 찾을 수 없습니다.",
         )
 
-    # 3. 답변 저장
     saved = save_answer(
         interview_id=interview_id,
         question_id=request.question_id,
@@ -100,14 +99,53 @@ def submit_answer(
             detail="답변 저장에 실패했습니다.",
         )
 
-    # 4. 다음 질문 생성
-    next_question = generate_next_question(
-        resume_id=interview["resume_id"],
-        previous_question=current_question["content"],
-        answer=request.answer,
+    return {
+        "interview_id": interview_id,
+        "question_id": request.question_id,
+    }
+
+
+def generate_follow_up_question(
+    interview_id: str,
+    question_id: str,
+):
+    interview = find_interview(interview_id)
+
+    if not interview:
+        raise HTTPException(
+            status_code=404,
+            detail="면접을 찾을 수 없습니다.",
+        )
+
+    current_question = next(
+        (
+            question
+            for question in interview["questions"]
+            if question["question_id"] == question_id
+        ),
+        None,
     )
 
-    # 5. 다음 질문 저장
+    if not current_question:
+        raise HTTPException(
+            status_code=404,
+            detail="질문을 찾을 수 없습니다.",
+        )
+
+    answer = current_question.get("answer")
+
+    if not answer:
+        raise HTTPException(
+            status_code=404,
+            detail="답변을 찾을 수 없습니다.",
+        )
+
+    next_question = generate_follow_up_question_ai(
+        resume_id=interview["resume_id"],
+        previous_question=current_question["content"],
+        answer=answer,
+    )
+
     saved = save_question(
         interview_id=interview_id,
         question_id=next_question.id,
@@ -120,10 +158,40 @@ def submit_answer(
             detail="다음 질문 저장에 실패했습니다.",
         )
 
-    # 6. 다음 질문 반환
-    return InterviewAnswerResponse(
-        interview_id=interview_id,
-        question_id=request.question_id,
-        answer=request.answer,
-        next_question=next_question,
+    return next_question
+
+
+def generate_new_question(
+    interview_id: str,
+):
+    interview = find_interview(interview_id)
+
+    if not interview:
+        raise HTTPException(
+            status_code=404,
+            detail="면접을 찾을 수 없습니다.",
+        )
+
+    previous_questions = [
+        question["content"]
+        for question in interview["questions"]
+    ]
+
+    next_question = generate_new_question_ai(
+        resume_id=interview["resume_id"],
+        previous_questions=previous_questions,
     )
+
+    saved = save_question(
+        interview_id=interview_id,
+        question_id=next_question.id,
+        question=next_question.content,
+    )
+
+    if not saved:
+        raise HTTPException(
+            status_code=500,
+            detail="다음 질문 저장에 실패했습니다.",
+        )
+
+    return next_question

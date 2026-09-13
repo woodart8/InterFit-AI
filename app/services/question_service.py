@@ -4,7 +4,10 @@ from uuid import uuid4
 from openai import OpenAI
 
 from app.schemas.interview import InterviewQuestion
-from app.services.rag_service import search_relevant_resume_chunks
+from app.services.rag_service import (
+    search_relevant_resume_chunks, 
+    search_resume_chunks_for_new_question,
+)
 
 
 client = OpenAI(
@@ -12,7 +15,7 @@ client = OpenAI(
 )
 
 
-def generate_next_question(
+def generate_follow_up_question(
     resume_id: str,
     previous_question: str,
     answer: str,
@@ -78,6 +81,90 @@ def generate_next_question(
 {resume_context}
 
 위 정보를 바탕으로 다음 면접 질문을 하나 생성하세요.
+""",
+            },
+        ],
+        temperature=0.7,
+    )
+
+    question_content = response.choices[0].message.content.strip()
+
+    return InterviewQuestion(
+        id=uuid4().hex,
+        content=question_content,
+    )
+
+
+def generate_new_question(
+    resume_id: str,
+    previous_questions: list[str],
+) -> InterviewQuestion:
+
+    # 1. 이력서에서 질문 소재 검색
+    relevant_chunks = search_resume_chunks_for_new_question(
+        resume_id=resume_id,
+        limit=10,
+    )
+
+    # 2. RAG 결과를 context로 변환
+    resume_context = "\n\n".join(
+        [
+            f"""
+제목: {chunk["title"]}
+내용:
+{chunk["content"]}
+""".strip()
+            for chunk in relevant_chunks
+        ]
+    )
+
+    if not resume_context:
+        resume_context = "관련된 이력서 정보를 찾지 못했습니다."
+
+    # 3. 이미 질문한 내용
+    previous_question_context = "\n".join(
+        [
+            f"{index + 1}. {question}"
+            for index, question in enumerate(previous_questions)
+        ]
+    )
+
+    if not previous_question_context:
+        previous_question_context = "아직 질문한 내용이 없습니다."
+
+    # 4. 새로운 질문 생성
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": """
+당신은 백엔드 개발자 채용 면접관입니다.
+
+지원자의 이력서를 바탕으로 새로운 면접 질문을 하나 생성하세요.
+
+규칙:
+- 이전 질문과 다른 주제의 질문을 생성하세요.
+- 지원자의 이력서에 실제로 존재하는 프로젝트, 기술, 경험을 활용하세요.
+- 이미 질문한 내용과 동일하거나 매우 유사한 질문은 피하세요.
+- 이전 답변을 파고드는 꼬리질문을 생성하지 마세요.
+- 백엔드 개발자의 기술 역량과 문제 해결 능력을 확인할 수 있는 질문을 우선하세요.
+- 실제 기술 면접에서 사용할 수 있는 질문을 생성하세요.
+- 질문 하나만 출력하세요.
+- 질문 앞에 번호나 설명을 붙이지 마세요.
+""",
+            },
+            {
+                "role": "user",
+                "content": f"""
+[지원자의 이력서 관련 정보]
+{resume_context}
+
+[이미 질문한 질문들]
+{previous_question_context}
+
+위 정보를 바탕으로 지금까지 다루지 않은 새로운 주제의
+면접 질문을 하나 생성하세요.
 """,
             },
         ],

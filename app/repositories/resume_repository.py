@@ -93,3 +93,27 @@ def search_resume_chunks(
     return list(
         resume_chunk_collection.aggregate(pipeline)
     )
+
+
+def get_resume_chunks(
+    resume_id: str,
+    limit: int = 10,
+):
+    try:
+        object_id = ObjectId(resume_id)
+    except Exception:
+        return []
+
+    return list(
+        resume_chunk_collection.find(
+            {
+                "resume_id": object_id,
+            },
+            {
+                "_id": 0,
+                "type": 1,
+                "title": 1,
+                "content": 1,
+            },
+        ).limit(limit)
+    )

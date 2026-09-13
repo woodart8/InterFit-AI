@@ -23,5 +23,7 @@ class InterviewAnswerRequest(BaseModel):
 class InterviewAnswerResponse(BaseModel):
     interview_id: str
     question_id: str
-    answer: str
-    next_question: InterviewQuestion  
+
+
+class GenerateFollowUpQuestionRequest(BaseModel):
+    question_id: str

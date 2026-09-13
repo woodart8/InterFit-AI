@@ -1,7 +1,7 @@
 from app.services.embedding import embed_chunks
 from app.schemas.resume import ResumeChunk
 
-from app.repositories.resume_repository import search_resume_chunks
+from app.repositories.resume_repository import search_resume_chunks, get_resume_chunks
 
 
 def search_relevant_resume_chunks(
@@ -28,5 +28,16 @@ def search_relevant_resume_chunks(
     return search_resume_chunks(
         resume_id=resume_id,
         embedding=embedding,
+        limit=limit,
+    )
+
+
+def search_resume_chunks_for_new_question(
+    resume_id: str,
+    limit: int = 10,
+):
+    # 이력서 전체에서 질문 소재 조회 → 새로운 질문용
+    return get_resume_chunks(
+        resume_id=resume_id,
         limit=limit,
     )
